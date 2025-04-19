@@ -1,0 +1,48 @@
+name: Build and Save Custom FFmpeg Image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_name:
+        description: '构建后的镜像名 (例如: my-ffmpeg)'
+        required: true
+        default: 'my-ffmpeg'
+
+jobs:
+  build_and_package:
+    runs-on: ubuntu-22.04
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Clean up Docker to free space
+      run: |
+        docker system prune -a -f
+        docker volume prune -f
+
+    - name: Build Docker Image
+      run: |
+        image_name="${{ github.event.inputs.image_name }}"
+        docker buildx create --use
+        docker buildx build \
+          --platform linux/amd64 \
+          --tag "${image_name}" \
+          --output type=docker \
+          .
+
+    - name: Save Docker Image to TAR
+      run: |
+        image_name="${{ github.event.inputs.image_name }}"
+        safe_name="${image_name//\//_}"
+        safe_name="${safe_name//:/_}"
+        docker save "${image_name}" -o "${safe_name}-amd64.tar"
+        gzip -c "${safe_name}-amd64.tar" > "${safe_name}-amd64.tar.gz"
+        rm "${safe_name}-amd64.tar"
+
+    - name: Upload Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ffmpeg-image
+        path: "*.tar.gz"
+        retention-days: 7
